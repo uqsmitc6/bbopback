@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BBOP Conversation Dashboard</title>
-    <!-- Apps Script Connector -->
-    <script src="apps-script-connector.js"></script>
     <style>
         :root {
             --primary: #3498db;
@@ -32,16 +30,6 @@
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-        }
-        
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 20px;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
         h1, h2, h3 {
@@ -145,17 +133,25 @@
             max-width: 85%;
         }
         
-        .message.chatbot {
+        .message.chatbot, .message.assistant {
             background-color: var(--chatbot);
             margin-right: auto;
             border-top-left-radius: 0;
         }
         
-        .message.user {
+        .message.user, .message.student {
             background-color: var(--user);
             margin-left: auto;
             border-top-right-radius: 0;
             text-align: right;
+        }
+        
+        .message.system {
+            background-color: #fff3cd;
+            margin: 0 auto;
+            width: 90%;
+            text-align: center;
+            border: 1px dashed #ffc107;
         }
         
         .message-role {
@@ -169,6 +165,7 @@
         .message-content {
             font-size: 14px;
             line-height: 1.5;
+            white-space: pre-wrap;
         }
         
         .conversation-info {
@@ -207,411 +204,123 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             padding: 20px;
         }
-
-        /* Login styles */
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-        }
-
-        .login-btn {
-            width: 100%;
+        
+        /* Debug panel styles */
+        .debug-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(0,0,0,0.8);
+            color: #fff;
             padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 9999;
         }
-
-        .hidden {
-            display: none;
+        
+        .debug-panel h3 {
+            color: #fff;
+            margin-top: 0;
+        }
+        
+        .debug-panel pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        .debug-panel button {
+            background-color: #2ecc71;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        /* Loading indicator */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid var(--primary);
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Connection status indicator */
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 15px;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .connection-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .connection-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .connection-status:before {
+            content: "";
+            display: block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .connection-status.connected:before {
+            background-color: #28a745;
+        }
+        
+        .connection-status.disconnected:before {
+            background-color: #dc3545;
         }
     </style>
 </head>
 <body>
-    <!-- Login Screen -->
-    <div id="login-screen" class="login-container">
-        <h2>BBOP Dashboard Login</h2>
-        <div class="form-group">
-            <label for="username">Username:</label>
-            <input type="text" id="username" required>
-        </div>
-        <div class="form-group">
-            <label for="password">Password:</label>
-            <input type="password" id="password" required>
-        </div>
-        <button class="login-btn" onclick="login()">Login</button>
+    <!-- Debug Panel -->
+    <div id="debug-panel" class="debug-panel">
+        <h3>Debug Panel</h3>
+        <button onclick="testSampleData()">Test Sample Data</button>
+        <button onclick="testLiveConnection()">Test Live Connection</button>
+        <button onclick="clearDebugLog()">Clear Log</button>
+        <button onclick="hideDebugPanel()">Hide Panel</button>
+        <div id="debug-output"></div>
     </div>
 
-    <!-- Dashboard (initially hidden) -->
-    <div id="dashboard" class="container hidden">
+    <!-- Dashboard directly visible, no login -->
+    <div id="dashboard" class="container">
         <div class="header">
             <h1>BBOP Conversation Dashboard</h1>
-            <button onclick="logout()">Logout</button>
+            <div style="display: flex; align-items: center;">
+                <button id="refresh-button" onclick="manualRefresh()">Refresh Data</button>
+                <div id="connection-status" class="connection-status disconnected">
+                    Disconnected
+                </div>
+            </div>
         </div>
         
         <div class="filters">
-            <div class="filter-group">
-                <label for="student-select">Select Student:</label>
-                <select id="student-select">
-                    <option value="">All Students</option>
-                    <option value="s4119798">Samantha Ridge (s4119798)</option>
-                    <option value="s4120010">Michael Chen (s4120010)</option>
-                    <option value="s4118432">Jordan Taylor (s4118432)</option>
-                </select>
-            </div>
-            
-            <div class="filter-group">
-                <label for="date-select">Select Date:</label>
-                <input type="date" id="date-select">
-            </div>
-            
-            <div class="filter-group">
-                <label>&nbsp;</label>
-                <button onclick="applyFilters()">Apply Filters</button>
-            </div>
-        </div>
-        
-        <div class="dashboard">
-            <div class="conversation-list" id="conversation-list">
-                <h3>Conversations</h3>
-                <!-- Conversation items will be dynamically added here -->
-            </div>
-            
-            <div class="conversation-detail" id="conversation-detail">
-                <div class="conversation-info">
-                    <h3>Conversation Details</h3>
-                    <p>Select a conversation from the list to view details.</p>
-                </div>
-                <div id="messages-container">
-                    <!-- Messages will be dynamically added here -->
-                </div>
-            </div>
-        </div>
-        
-        <div class="stats-container">
-            <div class="stat-card">
-                <h3>Total Conversations</h3>
-                <div class="stat-value">28</div>
-                <p>Across all students</p>
-            </div>
-            
-            <div class="stat-card">
-                <h3>Active Students</h3>
-                <div class="stat-value">15</div>
-                <p>In the last 7 days</p>
-            </div>
-            
-            <div class="stat-card">
-                <h3>Avg. Messages</h3>
-                <div class="stat-value">12.4</div>
-                <p>Per conversation</p>
-            </div>
-            
-            <div class="stat-card">
-                <h3>Peak Activity</h3>
-                <div class="stat-value">3-5 PM</div>
-                <p>Most active time</p>
-            </div>
-        </div>
-        
-        <div class="chart-container">
-            <h3>Conversation Activity</h3>
-            <div id="activity-chart" style="width: 100%; height: 250px;">
-                <!-- Placeholder for chart -->
-                <img src="/api/placeholder/1100/250" alt="Activity Chart Placeholder" style="width: 100%; height: 100%; object-fit: cover;">
-            </div>
-        </div>
-    </div>
-
-    <!-- Google Sheets Live Connector Script -->
-    <script src="google-sheets-connector.js"></script>
-    
-    <script>
-        // This will store our live data
-        let dashboardData = {
-            conversations: [],
-            students: {}
-        };
-        
-        // Sample data for initialization before API data loads
-        const sampleData = {
-            conversations: [
-                {
-                    id: 'conv1',
-                    timestamp: '2025-03-18 13:20:10',
-                    studentName: 'Samantha Ridge',
-                    studentID: 's4119798',
-                    messages: [
-                        {
-                            role: 'Chatbot',
-                            content: 'Hello Samantha Ridge! Your ID **s4119798** has been verified. How can I assist you today?'
-                        },
-                        {
-                            role: 'User',
-                            content: 'hello, how can you help me'
-                        },
-                        {
-                            role: 'Chatbot',
-                            content: 'I can assist you with your assessment on leadership in the 21st century. Here are some ways I can help: 1. **Leader Selection**: I can help you evaluate whether your chosen leader meets the assignment requirements. 2. **Theory Selection**: I can guide you in selecting appropriate leadership theories from the approved list. 3. **Source Verification**: I can explain how to verify academic and media sources for credibility. 4. **Structure Guidance**: I can provide tips on how to structure your paper effectively. 5. **Critical Analysis**: I can help you think critically about how to analyze leadership practices using relevant theories. Let me know what specific assistance you need!'
-                        }
-                    ]
-                },
-                {
-                    id: 'conv2',
-                    timestamp: '2025-03-19 09:45:22',
-                    studentName: 'Samantha Ridge',
-                    studentID: 's4119798',
-                    messages: [
-                        {
-                            role: 'Chatbot',
-                            content: 'Welcome back, Samantha! How can I help you today?'
-                        },
-                        {
-                            role: 'User',
-                            content: 'I need help with source verification for my paper'
-                        },
-                        {
-                            role: 'Chatbot',
-                            content: 'I\'d be happy to help with source verification. When evaluating sources, consider: 1. **Authority**: Who authored it? What are their credentials? 2. **Currency**: When was it published? Is the information still relevant? 3. **Purpose**: Why was it created? Is there bias? 4. **Publication venue**: Is it peer-reviewed or from a reputable publisher? Would you like me to explain any of these in more detail?'
-                        }
-                    ]
-                },
-                {
-                    id: 'conv3',
-                    timestamp: '2025-03-17 14:30:05',
-                    studentName: 'Michael Chen',
-                    studentID: 's4120010',
-                    messages: [
-                        {
-                            role: 'Chatbot',
-                            content: 'Hello Michael Chen! Your ID **s4120010** has been verified. How can I assist you today?'
-                        },
-                        {
-                            role: 'User',
-                            content: 'I\'m trying to choose between transformational and servant leadership for my assignment. Can you help me?'
-                        },
-                        {
-                            role: 'Chatbot',
-                            content: 'Absolutely! Both are excellent choices for your leadership analysis. Transformational leadership focuses on inspiring followers to exceed expectations and create positive change, while servant leadership emphasizes putting others\' needs first. For your assignment, consider: 1) Which better aligns with your chosen leader\'s behaviors? 2) Which theory provides more analytical depth for your specific case? 3) Which has more relevant scholarly sources available? Would you like me to elaborate on either theory?'
-                        }
-                    ]
-                }
-            ],
-            students: {
-                's4119798': {
-                    id: 's4119798',
-                    name: 'Samantha Ridge',
-                    conversationCount: 2
-                },
-                's4120010': {
-                    id: 's4120010',
-                    name: 'Michael Chen',
-                    conversationCount: 1
-                }
-            }
-        };
-
-        // Function to load conversations - uses dashboardData which can be updated live
-        function loadConversations(filter = {}) {
-            const conversationList = document.getElementById('conversation-list');
-            conversationList.innerHTML = '<h3>Conversations</h3>';
-            
-            // Use live data if available, otherwise fallback to sample data
-            const data = dashboardData.conversations.length > 0 ? dashboardData : sampleData;
-            
-            const filteredConversations = data.conversations.filter(conv => {
-                if (filter.studentID && conv.studentID !== filter.studentID) return false;
-                if (filter.date) {
-                    const convDate = conv.timestamp.split(' ')[0];
-                    if (convDate !== filter.date) return false;
-                }
-                return true;
-            });
-            
-            filteredConversations.forEach(conv => {
-                const item = document.createElement('div');
-                item.className = 'conversation-item';
-                item.dataset.id = conv.id;
-                item.innerHTML = `
-                    <strong>${conv.studentName}</strong> (${conv.studentID})<br>
-                    <small>${conv.timestamp}</small>
-                `;
-                item.addEventListener('click', () => showConversation(conv.id));
-                conversationList.appendChild(item);
-            });
-            
-            if (filteredConversations.length === 0) {
-                conversationList.innerHTML += '<p>No conversations found matching your filters.</p>';
-            }
-        }
-        
-        // Function to show a specific conversation
-        function showConversation(id) {
-            // Highlight selected conversation
-            document.querySelectorAll('.conversation-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            document.querySelector(`.conversation-item[data-id="${id}"]`).classList.add('active');
-            
-            // Find conversation data - use live data if available
-            const data = dashboardData.conversations.length > 0 ? dashboardData : sampleData;
-            const conversation = data.conversations.find(conv => conv.id === id);
-            
-            // Display conversation details
-            const detailContainer = document.getElementById('conversation-detail');
-            const messagesContainer = document.getElementById('messages-container');
-            
-            // Show conversation info
-            detailContainer.querySelector('.conversation-info').innerHTML = `
-                <h3>Conversation with ${conversation.studentName}</h3>
-                <p><strong>Student ID:</strong> ${conversation.studentID}</p>
-                <p><strong>Date/Time:</strong> ${conversation.timestamp}</p>
-            `;
-            
-            // Show messages
-            messagesContainer.innerHTML = '';
-            conversation.messages.forEach(msg => {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `message ${msg.role.toLowerCase()}`;
-                messageDiv.innerHTML = `
-                    <div class="message-role">${msg.role}</div>
-                    <div class="message-content">${msg.content}</div>
-                `;
-                messagesContainer.appendChild(messageDiv);
-            });
-        }
-        
-        // Apply filters
-        function applyFilters() {
-            const studentID = document.getElementById('student-select').value;
-            const date = document.getElementById('date-select').value;
-            
-            loadConversations({
-                studentID,
-                date
-            });
-        }
-        
-        // Login function
-        function login() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            // Simple authentication for demo
-            if (username === 'admin' && password === 'password') {
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('dashboard').classList.remove('hidden');
-                
-                // Initialize data fetching from Apps Script
-                initDataFetching();
-                
-                // Load sample data immediately while waiting for API data
-                loadConversations();
-            } else {
-                alert('Invalid credentials. Try using "admin" and "password".');
-            }
-        }
-        
-        // Logout function
-        function logout() {
-            document.getElementById('login-screen').classList.remove('hidden');
-            document.getElementById('dashboard').classList.add('hidden');
-        }
-        
-        // Function to fetch and update Google Sheet data
-        function refreshData() {
-            const statusElement = document.createElement('div');
-            statusElement.id = 'refresh-status';
-            statusElement.style.position = 'fixed';
-            statusElement.style.bottom = '20px';
-            statusElement.style.right = '20px';
-            statusElement.style.padding = '10px';
-            statusElement.style.backgroundColor = 'rgba(0,0,0,0.7)';
-            statusElement.style.color = 'white';
-            statusElement.style.borderRadius = '4px';
-            statusElement.textContent = 'Refreshing data...';
-            document.body.appendChild(statusElement);
-            
-            // Call the Google Sheets connector function
-            fetchSheetData().then(data => {
-                if (data) {
-                    // Update our live data
-                    dashboardData = data;
-                    
-                    // Reload the current view
-                    applyFilters();
-                    
-                    // Update status
-                    statusElement.textContent = 'Data refreshed!';
-                    statusElement.style.backgroundColor = 'rgba(46,204,113,0.7)';
-                    
-                    // Hide status after a moment
-                    setTimeout(() => {
-                        statusElement.style.opacity = '0';
-                        statusElement.style.transition = 'opacity 0.5s';
-                        setTimeout(() => {
-                            if (statusElement.parentNode) {
-                                statusElement.parentNode.removeChild(statusElement);
-                            }
-                        }, 500);
-                    }, 2000);
-                } else {
-                    // Handle error
-                    statusElement.textContent = 'Failed to refresh data';
-                    statusElement.style.backgroundColor = 'rgba(231,76,60,0.7)';
-                    
-                    // Hide status after a moment
-                    setTimeout(() => {
-                        statusElement.style.opacity = '0';
-                        statusElement.style.transition = 'opacity 0.5s';
-                        setTimeout(() => {
-                            if (statusElement.parentNode) {
-                                statusElement.parentNode.removeChild(statusElement);
-                            }
-                        }, 500);
-                    }, 3000);
-                }
-            });
-        }
-        
-        // Initialize the demo with sample data and Google Sheets API
-        document.addEventListener('DOMContentLoaded', function() {
-            // Sample login info for demo purposes
-            document.getElementById('username').value = 'admin';
-            document.getElementById('password').value = 'password';
-            
-            // Initialize Google Sheets API if on dashboard
-            if (!document.getElementById('dashboard').classList.contains('hidden')) {
-                initGoogleSheetsAPI();
-            }
-            
-            // Add refresh button to header
-            const headerElement = document.querySelector('.header');
-            if (headerElement) {
-                const refreshButton = document.createElement('button');
-                refreshButton.textContent = 'Refresh Data';
-                refreshButton.style.marginRight = '10px';
-                refreshButton.addEventListener('click', function() {
-                    // Get current filters
-                    const studentID = document.getElementById('student-select').value;
-                    const date = document.getElementById('date-select').value;
-                    
-                    // Refresh with current filters
-                    refreshData({studentID, date});
-                });
-                
-                // Insert before logout button
-                const logoutButton = headerElement.querySelector('button');
-                headerElement.insertBefore(refreshButton, logoutButton);
-            }
-        });
-    </script>
-</body>
-</html>
+            <div class="filter
